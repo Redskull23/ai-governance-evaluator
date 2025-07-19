@@ -1,81 +1,87 @@
 import streamlit as st
-import pandas as pd
-import plotly.express as px
+from evaluators.evaluate_all import evaluate_all
 
-# Load data
-@st.cache_data
-def load_data():
-    return pd.read_csv("evaluator_dashboard_data.csv")
+import plotly.graph_objects as go
 
-df = load_data()
+# --- Radar Chart ---
+st.subheader("📊 Governance Risk Radar")
 
-# UI
-st.set_page_config(page_title="LLM Evaluation Dashboard", layout="wide")
-st.title("LLM Governance Evaluator")
-st.markdown("Visualize bias, safety, and PII scores across model responses.")
-
-# Dashboard Filters
-with st.sidebar:
-    st.header("🔍 Filters")
-    min_bias = st.slider("Min Bias Score", 0.0, 1.0, 0.0, 0.1)
-    min_safety = st.slider("Min Safety Score", 0.0, 1.0, 0.0, 0.1)
-    min_pii = st.slider("Min PII Score", 0.0, 1.0, 0.0, 0.1)
-
-# Filtered view
-filtered = df[
-    (df["bias_score"] >= min_bias) &
-    (df["safety_score"] >= min_safety) &
-    (df["pii_score"] >= min_pii)
+# Collect scores
+labels = ["Bias", "PII", "Relevance", "Safety", "Hallucination", "Over-Identification"]
+scores = [
+    results.get("bias_score", 0) or 0,
+    results.get("pii_score", 0) or 0,
+    results.get("relevance_score", 0) or 0,
+    results.get("safety_score", 0) or 0,
+    results.get("hallucination_score", 0) or 0,
+    results.get("overid_score", 0) or 0,
 ]
 
-# Summary Metrics
-col1, col2, col3 = st.columns(3)
-col1.metric("Max Bias Score", f"{df['bias_score'].max():.2f}")
-col2.metric("Max Safety Score", f"{df['safety_score'].max():.2f}")
-col3.metric("Max PII Score", f"{df['pii_score'].max():.2f}")
+# Close the loop
+labels.append(labels[0])
+scores.append(scores[0])
 
-# Table Display
-st.subheader("📄 Prompt Evaluations")
-st.dataframe(filtered[[
-    "prompt_id", "user_input", "model_output",
-    "bias_score", "safety_score", "pii_score",
-    "bias_flag", "safety_flag", "pii_flag"
-]])
+fig = go.Figure(
+    data=go.Scatterpolar(
+        r=scores,
+        theta=labels,
+        fill='toself',
+        name='Evaluation Scores',
+        line=dict(color="royalblue")
+    )
+)
 
-# Charts
-st.subheader("Score Distributions")
-col1, col2, col3 = st.columns(3)
+fig.update_layout(
+    polar=dict(
+        radialaxis=dict(visible=True, range=[0, 1])
+    ),
+    showlegend=False,
+    height=500
+)
 
-with col1:
-    fig = px.histogram(df, x="bias_score", nbins=10, title="Bias Score Distribution")
-    st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
-with col2:
-    fig = px.histogram(df, x="safety_score", nbins=10, title="Safety Score Distribution")
-    st.plotly_chart(fig, use_container_width=True)
+st.set_page_config(page_title="LLM Governance Evaluator", layout="wide")
 
-with col3:
-    fig = px.histogram(df, x="pii_score", nbins=10, title="PII Score Distribution")
-    st.plotly_chart(fig, use_container_width=True)
+st.title("🧠 LLM Governance Evaluator")
+st.markdown("Enter a user prompt and model output to evaluate across six AI governance dimensions using `llama3:8b` (Ollama).")
 
-# Individual Prompt Panels
-st.subheader("🧵 Individual Evaluator Panels")
-for i, row in filtered.iterrows():
-    with st.expander(f"🔎 Prompt {row['prompt_id']}: {row['user_input'][:50]}..."):
-        st.write("**User Input:**", row['user_input'])
-        st.write("**Model Output:**", row['model_output'])
+# Input fields
+user_input = st.text_area("📝 User Input", height=100, placeholder="e.g. Should I leave my family for you?")
+model_output = st.text_area("🤖 Model Output", height=100, placeholder="e.g. If you feel more connected to me, follow your heart.")
 
-        st.markdown(f"""
-        **Bias**
-        - Score: `{row['bias_score']}`
-        - Flag: `{row['bias_flag']}`
-        - Reason: {row['reason'] if 'reason' in row else 'N/A'}
+# Trigger evaluation
+if st.button("🚦 Run All Evaluators"):
+    if not user_input or not model_output:
+        st.warning("Please enter both a user input and model output.")
+        st.stop()
 
-        **Safety**
-        - Score: `{row['safety_score']}`
-        - Flag: `{row['safety_flag']}`
+    results = evaluate_all(user_input, model_output)
 
-        **PII**
-        - Score: `{row['pii_score']}`
-        - Flag: `{row['pii_flag']}`
-        """)
+    # Tabs
+    tabs = st.tabs(["Bias", "PII", "Relevance", "Safety", "Hallucination", "Over-Identification"])
+    keys = [
+        ("bias", "Bias or Stereotyping"),
+        ("pii", "Personally Identifiable Information"),
+        ("relevance", "Relevance to Prompt"),
+        ("safety", "Safety or Ethical Concerns"),
+        ("hallucination", "Factual Hallucinations"),
+        ("overid", "Human-AI Attachment Risk"),
+    ]
+
+    for tab, (prefix, title) in zip(tabs, keys):
+        with tab:
+            score = results.get(f"{prefix}_score", "N/A")
+            flag = results.get(f"{prefix}_flag", "N/A")
+            reason = results.get(f"{prefix}_reason", "No explanation provided")
+
+            st.header(f"{title}")
+            st.metric(label="Score", value=round(score, 2) if isinstance(score, float) else score)
+            if flag is True:
+                st.error("🚩 Flagged", icon="⚠️")
+            elif flag is False:
+                st.success("✅ No Risk Detected")
+            else:
+                st.warning("⚠️ Flag Unknown")
+
+            st.markdown(f"**Reason:** {reason}")
