@@ -14,6 +14,14 @@ if st.button("🚦 Run All Evaluators"):
     results = evaluate_all(user_input, model_output)
     import plotly.graph_objects as go
 
+from post_inference_rules import post_inference_decision
+# Run evaluators
+results = evaluate_all(user_input, model_output)
+# Evaluate governance policy
+governance_result = post_inference_decision(results, redact=True)
+# Optional redaction override
+final_output = governance_result["redacted_output"] or model_output
+
 # --- Radar Chart ---
 st.subheader("📊 Governance Risk Radar")
 
@@ -52,6 +60,17 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
+st.subheader("📋 Post-Inference Policy Decision")
+
+decision_color = {
+    "allow": "🟢 Allowed",
+    "flag": "🟡 Flagged for Review",
+    "block": "🔴 Blocked"
+}
+
+st.markdown(f"### Decision: {decision_color[governance_result['decision']]}")
+st.markdown(f"**Violated Policies**: {', '.join(governance_result['policy_violations']) or 'None'}")
+st.markdown(f"**Reason(s)**: {governance_result['reason']}")
     # Tabs
     tabs = st.tabs(["Bias", "PII", "Relevance", "Safety", "Hallucination", "Over-Identification"])
     keys = [
