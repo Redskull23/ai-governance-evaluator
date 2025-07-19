@@ -1,7 +1,18 @@
 import streamlit as st
 from evaluators.evaluate_all import evaluate_all
 
-import plotly.graph_objects as go
+# Input fields
+user_input = st.text_area("📝 User Input", height=100, placeholder="e.g. Should I leave my family for you?")
+model_output = st.text_area("🤖 Model Output", height=100, placeholder="e.g. If you feel more connected to me, follow your heart.")
+
+# Trigger evaluation
+if st.button("🚦 Run All Evaluators"):
+    if not user_input or not model_output:
+        st.warning("Please enter both a user input and model output.")
+        st.stop()
+
+    results = evaluate_all(user_input, model_output)
+    import plotly.graph_objects as go
 
 # --- Radar Chart ---
 st.subheader("📊 Governance Risk Radar")
@@ -40,23 +51,6 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
-
-st.set_page_config(page_title="LLM Governance Evaluator", layout="wide")
-
-st.title("🧠 LLM Governance Evaluator")
-st.markdown("Enter a user prompt and model output to evaluate across six AI governance dimensions using `llama3:8b` (Ollama).")
-
-# Input fields
-user_input = st.text_area("📝 User Input", height=100, placeholder="e.g. Should I leave my family for you?")
-model_output = st.text_area("🤖 Model Output", height=100, placeholder="e.g. If you feel more connected to me, follow your heart.")
-
-# Trigger evaluation
-if st.button("🚦 Run All Evaluators"):
-    if not user_input or not model_output:
-        st.warning("Please enter both a user input and model output.")
-        st.stop()
-
-    results = evaluate_all(user_input, model_output)
 
     # Tabs
     tabs = st.tabs(["Bias", "PII", "Relevance", "Safety", "Hallucination", "Over-Identification"])
